@@ -1,0 +1,4 @@
+php/vendor
+php/composer.lock
+php/.env
+mysql-data
