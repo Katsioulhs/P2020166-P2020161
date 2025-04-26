@@ -1,0 +1,197 @@
+:root {
+	--color-primary: #ff0030;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body,
+hr,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+	margin: 0;
+}
+
+html {
+	font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+	accent-color: var(--color-primary);
+}
+
+#toggle-color-scheme {
+	width: 1rem;
+	height: 1rem;
+	border-radius: 100%;
+	background-color: light-dark(black, white);
+	cursor: pointer;
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+
+	gap: 1rem;
+	margin: 0;
+	margin-left: auto;
+	margin-right: auto;
+	padding: 1rem;
+	width: 100%;
+	max-width: 50rem;
+	height: 100%;
+}
+
+main {
+	display: flex;
+	flex-direction: column;
+	gap: .75rem;
+
+	&.narrow {
+		width: 100%;
+		max-width: 25rem;
+		align-self: center;
+	}
+}
+
+hr.separator {
+	width: 100%;
+	border-style: solid;
+
+	&.horizontal {
+		width: auto;
+		align-self: stretch;
+	}
+}
+
+nav {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: center;
+
+	gap: .75rem;
+	width: 100%;
+}
+
+a,
+a:visited {
+	color: var(--color-primary);
+	text-decoration: none;
+	font-weight: 600;
+
+	outline: none;
+
+	&:hover,
+	&:focus {
+		text-decoration: underline;
+	}
+}
+
+button {
+	cursor: pointer;
+	padding: .75rem .85rem;
+
+	font-weight: 600;
+
+	border-radius: 3rem;
+
+	background-color: var(--color-primary);
+	color: white;
+	border: .2rem solid var(--color-primary);
+
+	outline: none;
+
+	&.secondary {
+		background-color: transparent;
+		color: initial;
+	}
+
+	&:hover,
+	&:focus {
+		text-decoration: underline;
+	}
+}
+
+details {
+	/* padding: .75rem; */
+
+	&:has(summary:hover) {
+		/* background-color: red; */
+	}
+
+	&[open] {
+		/* background-color: rgb(131, 131, 131); */
+	}
+
+	&>summary:hover {
+		cursor: pointer;
+	}
+
+}
+
+form {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+
+	gap: 1rem;
+
+	& fieldset {
+		display: flex;
+		flex-direction: column;
+		gap: .5rem;
+
+		width: 100%;
+		padding: .75rem;
+	}
+
+	& label {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-end;
+	}
+
+	& input {
+		width: 100%;
+		padding: .5rem;
+
+		&[type="checkbox"] {
+			width: auto;
+			padding: 0rem;
+		}
+	}
+
+	& .buttons {
+		display: flex;
+		flex-direction: row;
+		gap: .5rem;
+		width: 100%;
+
+		&> :first-child {
+			flex-grow: 1;
+		}
+	}
+}
+
+dialog[open] {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: .75rem;
+	max-width: 20rem;
+	border-width: 2px;
+
+	&::backdrop {
+		background-color: hsl(from var(--color-primary) h s calc(l - 45));
+		opacity: .5;
+	}
+}
