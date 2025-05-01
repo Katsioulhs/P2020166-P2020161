@@ -45,7 +45,6 @@ body {
 	margin-right: auto;
 	padding: 1rem;
 	width: 100%;
-	max-width: 50rem;
 	height: 100%;
 }
 
@@ -53,6 +52,7 @@ main {
 	display: flex;
 	flex-direction: column;
 	gap: .75rem;
+	width: 100%;
 
 	&.narrow {
 		width: 100%;
@@ -194,4 +194,43 @@ dialog[open] {
 		background-color: hsl(from var(--color-primary) h s calc(l - 45));
 		opacity: .5;
 	}
+}
+
+.container {
+	display: flex;
+	flex-direction: column;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center; 
+
+	gap: .5rem;
+	
+	&.horizontal {
+		flex-direction: row;
+	}
+}
+
+input, select {
+	padding: .5rem;
+}
+
+.list-entries {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	justify-content: center;
+	align-items: center;
+	gap: 1rem;
+}
+
+.list-entry {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	
+	gap: .75rem;
+	padding: 1rem;
+
+	border-style: solid;
+	border-radius: .5rem;
 }

@@ -3,7 +3,6 @@
 	<a href="help.php">Βοήθεια</a>
 	<hr class="separator horizontal">
 	<a href="lists.php">Λίστες</a>
-	<a href="search.php">Αναζήτηση</a>
 	<?php if (isset($_SESSION['user_id'])): ?>
 		<a href="logout.php" style="margin-left: auto">Αποσύνδεση</a>
 		<a href="account.php">Λογαριασμός</a>
@@ -31,7 +30,7 @@
 
 <h1 id="page-title" style="text-align: center; width: 100%">...</h1>
 <script>
-	const currentPage = window.location.pathname.split("/").pop();
+	const currentPage = window.location.pathname.split("/").pop() || "index.php";
 
 	for (const link of document.querySelectorAll("nav a")) {
 		if (link.getAttribute("href").split("/").pop() === currentPage) {
