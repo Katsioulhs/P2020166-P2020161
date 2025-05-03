@@ -189,6 +189,7 @@ dialog[open] {
 	gap: .75rem;
 	max-width: 20rem;
 	border-width: 2px;
+	border-radius: .25rem;
 
 	&::backdrop {
 		background-color: hsl(from var(--color-primary) h s calc(l - 45));
@@ -201,16 +202,17 @@ dialog[open] {
 	flex-direction: column;
 	flex-wrap: wrap;
 	align-items: center;
-	justify-content: center; 
+	justify-content: center;
 
 	gap: .5rem;
-	
+
 	&.horizontal {
 		flex-direction: row;
 	}
 }
 
-input, select {
+input,
+select {
 	padding: .5rem;
 }
 
@@ -227,10 +229,38 @@ input, select {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
-	
+
+	background-color: light-dark(hsl(from white h s calc(l - 2)), hsl(from black h s calc(l + 10)));
+
 	gap: .75rem;
 	padding: 1rem;
 
+	min-width: 18rem;
+
 	border-style: solid;
 	border-radius: .5rem;
+
+	& dialog[open] {
+		word-break: break-all;
+		max-width: 40rem;
+	}
+
+	& .video {
+		text-align: left;
+		padding: .75rem;
+		border-radius: .25rem;
+
+		&:nth-child(odd) {
+			background-color: light-dark(hsl(from white h s calc(l - 2)), hsl(from black h s calc(l + 10)));
+		}
+
+		&:nth-child(even) {
+			background-color: light-dark(hsl(from white h s calc(l - 5)), hsl(from black h s calc(l + 13)));
+		}
+
+		&:hover {
+			background-color: light-dark(hsl(from var(--color-primary) h s calc(l + 35)), hsl(from var(--color-primary) h s calc(l - 35)));
+			cursor: pointer;
+		}
+	}
 }

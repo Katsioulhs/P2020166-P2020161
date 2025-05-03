@@ -33,8 +33,13 @@ if (isset($_GET['action'])) {
 				users.email
 			FROM lists
 			JOIN users ON users.id = lists.user_id
-			WHERE lists.is_public = 1
+			WHERE lists.is_public = TRUE 
 		";
+
+		if ($isLoggedIn) {
+			$query .= "OR (lists.is_public = FALSE AND lists.user_id = {$_SESSION['user_id']})"; // TODO change with filters, bind parameters instead
+		}
+
 		$result = $db->query($query);
 
 		if (!$result) {
@@ -53,9 +58,7 @@ if (isset($_GET['action'])) {
 			'lists' => $lists
 		]);
 		exit;
-	}
-
-	if ($_GET['action'] === 'follow_status' && $isLoggedIn) {
+	} else if ($_GET['action'] === 'follow_status' && $isLoggedIn) {
 		$targetUserId = intval($_GET['user_id'] ?? 0);
 		$currentUserId = $_SESSION['user_id'];
 
@@ -68,9 +71,7 @@ if (isset($_GET['action'])) {
 			'is_following' => $result->num_rows > 0
 		]);
 		exit;
-	}
-
-	if ($_GET['action'] === 'toggle_follow' && $isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST') {
+	} else if ($_GET['action'] === 'toggle_follow' && $isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST') {
 		$targetUserId = intval($_POST['user_id'] ?? 0);
 		$currentUserId = $_SESSION['user_id'];
 
@@ -97,6 +98,59 @@ if (isset($_GET['action'])) {
 			echo json_encode(['status' => 'followed']);
 		}
 
+		exit;
+	} else if ($_GET['action'] === 'get_list_content') {
+		$listId = intval($_GET['list_id'] ?? 0);
+		$currentUserId = $_SESSION['user_id'] ?? null;
+
+		$stmt = $db->prepare("
+			SELECT user_id, is_public
+			FROM lists
+			WHERE id = ?
+		");
+		$stmt->bind_param("i", $listId);
+		$stmt->execute();
+		$result = $stmt->get_result();
+
+		if ($result->num_rows === 0) {
+			http_response_code(404);
+			echo json_encode(['error' => 'List not found']);
+			exit;
+		}
+
+		$row = $result->fetch_assoc();
+
+		$isPublic = $row['is_public'];
+		$listOwnerId = $row['user_id'];
+
+		if (!$currentUserId && !$isPublic) {
+			http_response_code(403);
+			echo json_encode(['error' => 'Access denied']);
+			exit;
+		}
+
+		if ($currentUserId && (!$isPublic && $currentUserId !== $listOwnerId)) {
+			http_response_code(403);
+			echo json_encode(['error' => 'Access denied']);
+			exit;
+		}
+
+		$stmt = $db->prepare("
+			SELECT title, added_at, youtube_id
+			FROM videos
+			WHERE list_id = ?
+			ORDER BY added_at DESC
+		");
+		$stmt->bind_param("i", $listId);
+		$stmt->execute();
+		$contentResult = $stmt->get_result();
+
+		$content = [];
+		while ($video = $contentResult->fetch_assoc()) {
+			$content[] = $video;
+		}
+
+		echo json_encode($content);
 		exit;
 	}
 
@@ -135,6 +189,11 @@ if (isset($_GET['action'])) {
 					const container = document.getElementById("list-entries");
 					container.innerHTML = "";
 
+					if (lists.length === 0) {
+						container.innerHTML = "<p>Δεν υπάρχουν διαθέσιμες λίστες για προβολή.</p>";
+						return;
+					}
+
 					lists.forEach(list => {
 						const section = document.createElement("section");
 						section.className = "list-entry";
@@ -143,13 +202,16 @@ if (isset($_GET['action'])) {
 
 						const fullName = `${list.name} ${list.surname}`;
 						const dialogIdOwner = `${list.list_id}-list-owner-dialog`;
+						const dialogIdContent = `${list.list_id}-list-content-dialog`;
 
 						section.innerHTML = `
 							<div>
 								<a href="javascript:;" id="${list.list_id}-list-owner-fullname">${fullName}</a>
 								<dialog id="${dialogIdOwner}">
-									<h1>${fullName}</h1>
-									<h3>${list.email}</h3>
+									<div>
+										<h1>${fullName}</h1>
+										<h3>${list.email}</h3>
+									</div>
 									<div id="${dialogIdOwner}-follow-section"></div>
 									<hr class="separator">
 									<form method="dialog"><button class="secondary">Κλείσιμο</button></form>
@@ -157,11 +219,26 @@ if (isset($_GET['action'])) {
 								<h1>${list.list_title}</h1>
 							</div>
 							<hr class="separator">
+							<div class="container horizontal">
+								<button id="${list.list_id}-list-videos-show">Περιεχόμενο</button>
+								<dialog id="${dialogIdContent}">
+									<div>
+										<h1>${list.list_title}</h1>
+										<h3>${fullName}</h3>
+									</div>
+									<hr class="separator">
+									<div id="${dialogIdContent}-content-section" style="overflow-y: auto; max-height: 50dvh;"></div>
+									<hr class="separator">
+									<form method="dialog"><button class="secondary">Κλείσιμο</button></form>
+								</dialog>
+								<button id="${list.list_id}-list-videos-edit" class="secondary" style="display: none"><!-- TODO -->Επεξεργασία</button>
+							</div>
 						`;
 
 						container.appendChild(section);
 
-						interactivityFollowing(dialogIdOwner, currentUserId, list)
+						interactivityFollowing(dialogIdOwner, currentUserId, list);
+						interactivityVideos(dialogIdContent, list);
 					});
 				});
 			}
@@ -171,7 +248,7 @@ if (isset($_GET['action'])) {
 				const followSection = document.getElementById(`${dialogId}-follow-section`);
 
 				if (!currentUserId || currentUserId == list.owner_id) {
-					followSection.innerHTML = "(εσύ είσαι)";
+					followSection.style.display = "none";
 					document.getElementById(`${list.list_id}-list-owner-fullname`).addEventListener("click", () => {
 						dialog.showModal();
 					});
@@ -205,8 +282,49 @@ if (isset($_GET['action'])) {
 					});
 				});
 			}
+
+			function interactivityVideos(dialogId, list) {
+				const dialog = document.getElementById(dialogId);
+				const videos = document.getElementById(`${dialogId}-content-section`);
+
+				document.getElementById(`${list.list_id}-list-videos-show`).addEventListener("click", () => {
+					fetch(`lists.php?action=get_list_content&list_id=${list.list_id}`).then(res => res.json()).then(data => {
+						if (data.length === 0) {
+							videos.innerHTML = "<p>Δεν υπάρχουν βίντεο σε αυτή τη λίστα.</p>";
+						} else {
+							videos.innerHTML = "";
+
+							data.forEach(video => {
+								videos.innerHTML += `
+									<div class="video" onclick="openVideoDialog('https://www.youtube.com/embed/${video.youtube_id}')">
+										<h1>${video.title}</h1>
+										<h3>Προστέθηκε: ${new Date(video.added_at).toLocaleString()}</h3>
+									</div>
+								`;
+							});
+						}
+
+						dialog.showModal();
+					});
+				});
+			}
 		</script>
 	</main>
+
+	<dialog id="videoDialog" style="max-width: none;">
+		<iframe id="videoIframe" width="660" height="375" frameborder="0" allowfullscreen></iframe>
+		<form method="dialog"><button class="secondary">Κλείσιμο</button></form>
+	</dialog>
+	<script>
+		function openVideoDialog(url) {
+			document.getElementById('videoIframe').src = url;
+			document.getElementById('videoDialog').showModal();
+		}
+
+		document.getElementById('videoDialog').addEventListener("close", () => {
+			document.getElementById('videoIframe').src = "";
+		});
+	</script>
 </body>
 
 </html>
