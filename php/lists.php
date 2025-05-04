@@ -77,7 +77,7 @@ function fetchFilteredLists(mysqli $db, array $filters = [], ?int $currentUserId
 		$types[] = "s";
 		$needsVideoJoin = true;
 	}
-	
+
 	if (!empty($filters['date_to'])) {
 		$conditions[] = "videos.added_at <= ?";
 		$params[] = $filters['date_to'];
@@ -472,7 +472,11 @@ if (isset($_GET['action'])) {
 
 							data.forEach(video => {
 								videos.innerHTML += `
-									<div class="video" onclick="openVideoDialog('https://www.youtube.com/embed/${video.youtube_id}')">
+									<div class="video" <?php if ($isLoggedIn): ?>
+										onclick="openVideoDialog('https://www.youtube.com/embed/${video.youtube_id}')"
+									<?php else: ?>
+										onclick="alert('Πρέπει να έχεις συνδεθεί για να αναπαράγεις περιεχόμενο!');"
+									<?php endif; ?>>
 										<h1>${video.title}</h1>
 										<h3>Προστέθηκε: ${new Date(video.added_at).toLocaleString()}</h3>
 									</div>
