@@ -195,6 +195,17 @@ dialog[open] {
 		background-color: hsl(from var(--color-primary) h s calc(l - 45));
 		opacity: .5;
 	}
+
+	&.search {
+		text-align: left;
+		
+		width: 100%;
+		max-width: 25rem;
+
+		& form {
+			width: 100%;
+		}
+	}
 }
 
 .container {

@@ -11,6 +11,130 @@ validate_that_user_is_logged_in($isLoggedIn);
 
 require_once 'helper/database.php';
 
+function fetchFilteredLists(mysqli $db, array $filters = [], ?int $currentUserId = null): array
+{
+	global $isLoggedIn;
+
+	$conditions = [];
+	$params = [];
+	$types = [];
+	$joins = [];
+
+	if (!$isLoggedIn) {
+		$conditions[] = "lists.is_public = TRUE";
+	} else {
+		switch ($filters['visibility'] ?? 'all') {
+			case 'public':
+				$conditions[] = "lists.is_public = TRUE";
+				break;
+			case 'private':
+				$conditions[] = "lists.is_public = FALSE AND lists.user_id = ?";
+				$params[] = $currentUserId;
+				$types[] = "i";
+				break;
+			default: // & case 'all':
+				$conditions[] = "(lists.is_public = TRUE OR lists.user_id = ?)";
+				$params[] = $currentUserId;
+				$types[] = "i";
+		}
+	}
+
+	if ($isLoggedIn) {
+		switch ($filters['owner'] ?? 'all') {
+			case 'me':
+				$conditions[] = "lists.user_id = ?";
+				$params[] = $currentUserId;
+				$types[] = "i";
+				break;
+			case 'following':
+				$conditions[] = "lists.user_id IN (
+					SELECT follows_user_id FROM followers WHERE user_id = ?
+				)";
+				$params[] = $currentUserId;
+				$types[] = "i";
+				break;
+		}
+	}
+
+	if (!empty($filters['list_title'])) {
+		$conditions[] = "lists.title LIKE ?";
+		$params[] = "%" . $filters['list_title'] . "%";
+		$types[] = "s";
+	}
+
+	$needsVideoJoin = false;
+
+	if (!empty($filters['video_title'])) {
+		$conditions[] = "videos.title LIKE ?";
+		$params[] = "%" . $filters['video_title'] . "%";
+		$types[] = "s";
+		$needsVideoJoin = true;
+	}
+
+	if (!empty($filters['date_from'])) {
+		$conditions[] = "videos.added_at >= ?";
+		$params[] = $filters['date_from'];
+		$types[] = "s";
+		$needsVideoJoin = true;
+	}
+	
+	if (!empty($filters['date_to'])) {
+		$conditions[] = "videos.added_at <= ?";
+		$params[] = $filters['date_to'];
+		$types[] = "s";
+		$needsVideoJoin = true;
+	}
+
+	if ($needsVideoJoin) {
+		$joins[] = "JOIN videos ON videos.list_id = lists.id";
+	}
+
+	if (!empty($filters['user_info'])) {
+		$search = "%" . $filters['user_info'] . "%";
+		$conditions[] = "(users.name LIKE ? OR users.surname LIKE ? OR users.email LIKE ? OR users.username LIKE ?)";
+		array_push($params, $search, $search, $search, $search);
+		array_push($types, "s", "s", "s", "s");
+	}
+
+	$whereClause = $conditions ? "WHERE " . implode(" AND ", $conditions) : "";
+	$joinClause = $joins ? implode(" ", $joins) : "";
+
+	$query = "
+		SELECT 
+			DISTINCT lists.id AS list_id,
+			lists.title AS list_title,
+			lists.user_id AS owner_id,
+			lists.is_public,
+			users.id AS user_id,
+			users.name,
+			users.surname,
+			users.email
+		FROM lists
+		JOIN users ON users.id = lists.user_id
+		$joinClause
+		$whereClause
+	";
+
+	$stmt = $db->prepare($query);
+	if (!$stmt) {
+		throw new RuntimeException("Database error: " . $db->error);
+	}
+
+	if (!empty($types)) {
+		$stmt->bind_param(implode("", $types), ...$params);
+	}
+
+	$stmt->execute();
+	$result = $stmt->get_result();
+
+	$lists = [];
+	while ($row = $result->fetch_assoc()) {
+		$lists[] = $row;
+	}
+
+	return $lists;
+}
+
 if (isset($_GET['action'])) {
 	header('Content-Type: application/json');
 
@@ -22,39 +146,12 @@ if (isset($_GET['action'])) {
 	}
 
 	if ($_GET['action'] === 'fetch_lists') {
-		$query = "
-			SELECT 
-				lists.id AS list_id,
-				lists.title AS list_title,
-				lists.user_id AS owner_id,
-				lists.is_public,
-				users.name,
-				users.surname,
-				users.email
-			FROM lists
-			JOIN users ON users.id = lists.user_id
-			WHERE lists.is_public = TRUE 
-		";
+		$currentUserId = $_SESSION['user_id'] ?? null;
 
-		if ($isLoggedIn) {
-			$query .= "OR (lists.is_public = FALSE AND lists.user_id = {$_SESSION['user_id']})"; // TODO change with filters, bind parameters instead
-		}
-
-		$result = $db->query($query);
-
-		if (!$result) {
-			http_response_code(500);
-			echo json_encode(['error' => 'Database query failed']);
-			exit;
-		}
-
-		$lists = [];
-		while ($row = $result->fetch_assoc()) {
-			$lists[] = $row;
-		}
+		$lists = fetchFilteredLists($db, $_GET, $currentUserId);
 
 		echo json_encode([
-			'current_user_id' => $_SESSION['user_id'] ?? null,
+			'current_user_id' => $currentUserId,
 			'lists' => $lists
 		]);
 		exit;
@@ -176,14 +273,93 @@ if (isset($_GET['action'])) {
 <body>
 	<?php require 'navigation.php' ?>
 
+	<aside class="container horizontal" style="justify-content: center; width: 100%">
+		<button id="open-search-dialog" onclick="document.getElementById('search-dialog').showModal();">Αναζήτηση</button>
+
+		<dialog id="search-dialog" class="search">
+			<h1>Αναζήτηση</h1>
+
+			<hr class="separator">
+
+			<form id="search-form" method="dialog">
+				<fieldset>
+					<legend>Τίτλος λίστας</legend>
+					<input type="text" name="list_title">
+				</fieldset>
+				<fieldset>
+					<legend>Τίτλος βίντεο</legend>
+					<input type="text" name="video_title">
+				</fieldset>
+				<fieldset>
+					<legend>Περίοδος (από - έως)</legend>
+					<input type="datetime-local" name="date_from" step=1>
+					<input type="datetime-local" name="date_to" step=1>
+				</fieldset>
+				<fieldset>
+					<legend>Στοιχεία χρήστη</legend>
+					<input type="text" name="user_info" placeholder="πχ όνομα, επώνυμο, email, username...">
+				</fieldset>
+
+				<?php if ($isLoggedIn): ?>
+					<fieldset>
+						<legend>Πρόσβαση</legend>
+						<select name="visibility">
+							<option value="all" selected>Οποιαδήποτε</option>
+							<option value="public">Δημόσια</option>
+							<option value="private">Ιδιωτική</option>
+						</select>
+					</fieldset>
+					<fieldset>
+						<legend>Δημιουργός</legend>
+						<select name="owner">
+							<option value="all" selected>Οποιοσδήποτε</option>
+							<option value="me">Εγώ</option>
+							<option value="following">Ακολουθούμενοι</option>
+						</select>
+					</fieldset>
+				<?php endif; ?>
+
+				<hr class="separator">
+
+				<div class="container horizontal">
+					<button type="submit">Συνέχεια</button>
+					<button class="secondary" type="reset">Καθαρισμός</button>
+					<button class="secondary" type="button" onclick="document.getElementById('search-dialog').close()">Άκυρο</button>
+				</div>
+			</form>
+		</dialog>
+
+		<?php if ($isLoggedIn): ?>
+			<button id="create-list">Δημιουργία</button>
+			<button id="export-lists" class="secondary">Εξαγωγή</button>
+		<?php endif; ?>
+	</aside>
+
 	<main id="list-entries" class="list-entries">
 		<script>
 			document.addEventListener("DOMContentLoaded", () => {
 				loadLists();
+
+				document.getElementById("search-form").addEventListener("submit", (e) => {
+					const formData = new FormData(e.target);
+
+					const dateFrom = formData.get("date_from");
+					const dateTo = formData.get("date_to");
+
+					if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+						alert('Η ημερομηνία "από" πρέπει να είναι πριν την ημερομηνία "έως".');
+						e.preventDefault();
+						return;
+					}
+
+					loadLists(formData);
+				});
 			});
 
-			function loadLists() {
-				fetch("lists.php?action=fetch_lists").then(res => res.json()).then(data => {
+			function loadLists(formData = new FormData()) {
+				formData.set("action", "fetch_lists");
+
+				fetch(`lists.php?${new URLSearchParams(formData).toString()}`).then(res => res.json()).then(data => {
 					const currentUserId = data.current_user_id;
 					const lists = data.lists;
 					const container = document.getElementById("list-entries");
