@@ -1,5 +1,8 @@
 <?php
 
+require_once 'vendor/autoload.php';
+use Symfony\Component\Yaml\Yaml;
+
 session_start();
 
 require_once 'helper/functions.php';
@@ -333,6 +336,44 @@ if (isset($_GET['action'])) {
 			http_response_code(500);
 			echo json_encode(['error' => 'Αποτυχία δημιουργίας λίστας.']);
 		}
+	} else if ($_GET['action'] === 'export_lists_yaml' && $isLoggedIn) {
+		$listsResult = $db->query("
+			SELECT 
+				lists.id AS list_id,
+				lists.title AS list_title,
+				users.id AS user_id,
+				users.username,
+				users.password
+			FROM lists
+			JOIN users ON users.id = lists.user_id
+			WHERE lists.is_public = TRUE
+		");
+		$exportData = [];
+
+		while ($list = $listsResult->fetch_assoc()) {
+			$anonymizedId = hash('sha256', $list['username'] . $list['password']);
+
+			$stmt = $db->prepare("
+				SELECT title, youtube_id, added_at
+				FROM videos
+				WHERE list_id = ?
+				ORDER BY added_at DESC
+			");
+			$stmt->bind_param("i", $list['list_id']);
+			$stmt->execute();
+			$videos = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+			$exportData[] = [
+				'id' => $list['list_id'],
+				'title' => $list['list_title'],
+				'owner' => $anonymizedId,
+				'videos' => $videos
+			];
+		}
+
+		header('Content-Type: text/yaml; charset=utf-8');
+		header('Content-Disposition: attachment; filename="lists_export.yaml"');
+		echo Yaml::dump($exportData, 4, 2);
 		exit;
 	}
 
@@ -443,7 +484,7 @@ if (isset($_GET['action'])) {
 				});
 			</script>
 
-			<button id="export-lists" class="secondary">Εξαγωγή</button>
+			<button id="export-lists" class="secondary" onclick="window.location.href = 'lists.php?action=export_lists_yaml';">Εξαγωγή</button>
 		<?php endif; ?>
 	</aside>
 
