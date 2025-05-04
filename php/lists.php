@@ -249,6 +249,91 @@ if (isset($_GET['action'])) {
 
 		echo json_encode($content);
 		exit;
+	} else if ($_GET['action'] === 'edit_list' && $isLoggedIn) {
+		$listId = intval($_GET['list_id'] ?? 0);
+		$listTitle = $_GET['list_title'] ?? null;
+		$visibility = $_GET['visibility'] ?? null;
+		$currentUserId = $_SESSION['user_id'];
+
+		if (!$listId || !$listTitle || !$visibility) {
+			http_response_code(400);
+			echo json_encode(['error' => 'Λείπουν απαραίτητα πεδία.']);
+			exit;
+		}
+
+		$visibility = $visibility === 'public' ? true : false;
+
+		$stmt = $db->prepare("SELECT user_id FROM lists WHERE id = ?");
+		$stmt->bind_param("i", $listId);
+		$stmt->execute();
+		$result = $stmt->get_result();
+
+		if ($result->num_rows === 0) {
+			http_response_code(404);
+			echo json_encode(['error' => 'Λίστα δεν βρέθηκε']);
+			exit;
+		}
+
+		$row = $result->fetch_assoc();
+		$listOwnerId = $row['user_id'];
+
+		if ($listOwnerId !== $currentUserId) {
+			http_response_code(403);
+			echo json_encode(['error' => 'Δεν έχετε δικαίωμα να επεξεργαστείτε αυτή τη λίστα']);
+			exit;
+		}
+
+		$stmt = $db->prepare("UPDATE lists SET title = ?, is_public = ? WHERE id = ?");
+		$stmt->bind_param("ssi", $listTitle, $visibility, $listId);
+		$stmt->execute();
+
+		if ($stmt->affected_rows > 0) {
+			echo json_encode(['status' => 'success', 'message' => 'Η λίστα ενημερώθηκε!']);
+		} else {
+			http_response_code(400);
+			echo json_encode(['error' => 'Η λίστα δεν ενημερώθηκε.']);
+		}
+		exit;
+	} else if ($_GET['action'] === 'delete_list' && $isLoggedIn) {
+		$listId = intval($_GET['list_id'] ?? 0);
+		$currentUserId = $_SESSION['user_id'];
+
+		$stmt = $db->prepare("DELETE FROM lists WHERE id = ? AND user_id = ?");
+		$stmt->bind_param("ii", $listId, $currentUserId);
+		$stmt->execute();
+
+		if ($stmt->affected_rows > 0) {
+			echo json_encode(['status' => 'success']);
+		} else {
+			echo json_encode(['error' => 'Δεν βρέθηκε λίστα ή δεν έχετε δικαίωμα διαγραφής.']);
+		}
+		exit;
+	} else if ($_GET['action'] === 'create_list' && $isLoggedIn) {
+		$listTitle = $_GET['list_title'] ?? 'νέα';
+		$visibility = $_GET['visibility'] ?? 'public';
+		$isPublic = $visibility === 'public' ? true : false;
+		$currentUserId = $_SESSION['user_id'];
+
+		$stmt = $db->prepare("INSERT INTO lists (title, is_public, user_id) VALUES (?, ?, ?)");
+		$stmt->bind_param("sii", $listTitle, $isPublic, $currentUserId);
+		$success = $stmt->execute();
+
+		if ($success) {
+			$listId = $stmt->insert_id;
+			echo json_encode([
+				'status' => 'success',
+				'list' => [
+					'list_id' => $listId,
+					'list_title' => $listTitle,
+					'is_public' => $isPublic,
+					'owner_id' => $currentUserId
+				]
+			]);
+		} else {
+			http_response_code(500);
+			echo json_encode(['error' => 'Αποτυχία δημιουργίας λίστας.']);
+		}
+		exit;
 	}
 
 	http_response_code(400);
@@ -301,6 +386,8 @@ if (isset($_GET['action'])) {
 				</fieldset>
 
 				<?php if ($isLoggedIn): ?>
+					<hr class="separator">
+
 					<fieldset>
 						<legend>Πρόσβαση</legend>
 						<select name="visibility">
@@ -331,6 +418,31 @@ if (isset($_GET['action'])) {
 
 		<?php if ($isLoggedIn): ?>
 			<button id="create-list">Δημιουργία</button>
+			<script>
+				document.getElementById("create-list").addEventListener("click", () => {
+					const url = new URL("lists.php", window.location.origin);
+					url.searchParams.append("action", "create_list");
+					url.searchParams.append("list_title", "νέα");
+					url.searchParams.append("visibility", "public");
+
+					fetch(url).then(res => res.json()).then(data => {
+						if (data.status === "success") {
+							const list = data.list;
+
+							document.getElementById("edit-list-id").value = list.list_id;
+							document.getElementById("edit-list-title").value = list.list_title;
+							document.getElementById("edit-list-public").checked = list.is_public;
+
+							document.getElementById("edit-list-dialog").showModal();
+
+							loadLists();
+						} else {
+							alert(data.error || "Σφάλμα κατά τη δημιουργία λίστας.");
+						}
+					});
+				});
+			</script>
+
 			<button id="export-lists" class="secondary">Εξαγωγή</button>
 		<?php endif; ?>
 	</aside>
@@ -352,11 +464,12 @@ if (isset($_GET['action'])) {
 						return;
 					}
 
-					loadLists(formData);
+					loadLists();
 				});
 			});
 
-			function loadLists(formData = new FormData()) {
+			function loadLists() {
+				const formData = new FormData(document.getElementById("search-form"));
 				formData.set("action", "fetch_lists");
 
 				fetch(`lists.php?${new URLSearchParams(formData).toString()}`).then(res => res.json()).then(data => {
@@ -407,7 +520,7 @@ if (isset($_GET['action'])) {
 									<hr class="separator">
 									<form method="dialog"><button class="secondary">Κλείσιμο</button></form>
 								</dialog>
-								<button id="${list.list_id}-list-videos-edit" class="secondary" style="display: none"><!-- TODO -->Επεξεργασία</button>
+								${list.owner_id === currentUserId ? `<button id="${list.list_id}-list-videos-edit" class="secondary">Επεξεργασία</button>` : ''}
 							</div>
 						`;
 
@@ -415,6 +528,7 @@ if (isset($_GET['action'])) {
 
 						interactivityFollowing(dialogIdOwner, currentUserId, list);
 						interactivityVideos(dialogIdContent, list);
+						interactivityEditList(list);
 					});
 				});
 			}
@@ -488,6 +602,28 @@ if (isset($_GET['action'])) {
 					});
 				});
 			}
+
+			function interactivityEditList(list) {
+				const editBtn = document.getElementById(`${list.list_id}-list-videos-edit`);
+				const dialog = document.getElementById("edit-list-dialog");
+				const addVideoBtn = document.getElementById("add-video-btn");
+
+				if (!editBtn) {
+					return;
+				}
+
+				editBtn.addEventListener("click", () => {
+					document.getElementById("edit-list-id").value = list.list_id;
+					document.getElementById("edit-list-title").value = list.list_title;
+					if (list.is_public) {
+						document.getElementById("edit-list-public").checked = true;
+					} else {
+						document.getElementById("edit-list-private").checked = true;
+					}
+
+					dialog.showModal();
+				});
+			}
 		</script>
 	</main>
 
@@ -503,6 +639,89 @@ if (isset($_GET['action'])) {
 
 		document.getElementById('videoDialog').addEventListener("close", () => {
 			document.getElementById('videoIframe').src = "";
+		});
+	</script>
+
+	<dialog id="edit-list-dialog" class="edit">
+		<h1>Επεξεργασία</h1>
+
+		<hr class="separator">
+
+		<form id="edit-list-form" method="dialog">
+			<input type="hidden" name="edit-list-id" id="edit-list-id">
+
+			<div class="container horizontal">
+				<button type="button" id="add-video-btn">Προσθήκη Περιεχομένου</button>
+				<button type="button" id="delete-list-btn" class="secondary">Διαγραφή</button>
+			</div>
+
+			<hr class="separator">
+
+			<fieldset>
+				<legend>Λίστα</legend>
+				<input type="text" name="list_title" id="edit-list-title" required>
+			</fieldset>
+
+			<fieldset>
+				<legend>Πρόσβαση</legend>
+				<div class="container horizontal" style="justify-content: flex-start">
+					<label style="align-items: center"><input type="radio" name="visibility" value="public" id="edit-list-public">Δημόσια</label>
+					<label style="align-items: center"><input type="radio" name="visibility" value="private" id="edit-list-private">Ιδιωτική</label>
+				</div>
+			</fieldset>
+
+			<div class="container horizontal">
+				<button type="submit">Αποθήκευση</button>
+				<button class="secondary" type="button" id="close-edit-list">Κλείσιμο</button>
+			</div>
+		</form>
+	</dialog>
+	<script>
+		document.getElementById("edit-list-form").addEventListener("submit", (e) => {
+			e.preventDefault();
+
+			const updatedTitle = document.getElementById("edit-list-title").value;
+			const updatedVisibility = document.querySelector('input[name="visibility"]:checked').value;
+
+			const url = new URL("lists.php", window.location.origin);
+			url.searchParams.append("action", "edit_list");
+			url.searchParams.append("list_id", document.getElementById("edit-list-id").value);
+			url.searchParams.append("list_title", updatedTitle);
+			url.searchParams.append("visibility", updatedVisibility);
+
+			fetch(url).then(res => res.json()).then(data => {
+				if (data.status === "success") {
+					alert(data.message);
+					loadLists();
+				}
+				else {
+					alert(data.error);
+				}
+			});
+		});
+
+		document.getElementById("delete-list-btn").addEventListener("click", () => {
+			if (!confirm("Σίγουρα θέλεις να διαγράψεις αυτή τη λίστα;")) {
+				return;
+			}
+
+			const url = new URL("lists.php", window.location.origin);
+			url.searchParams.set("action", "delete_list");
+			url.searchParams.set("list_id", document.getElementById("edit-list-id").value);
+
+			fetch(url).then(res => res.json()).then(data => {
+				if (data.status === "success") {
+					alert("Η λίστα διαγράφηκε!");
+					loadLists();
+					document.getElementById("edit-list-dialog").close();
+				} else {
+					alert(data.error || "Κάτι πήγε στραβά κατά τη διαγραφή.");
+				}
+			});
+		});
+
+		document.getElementById("close-edit-list").addEventListener("click", () => {
+			document.getElementById("edit-list-dialog").close();
 		});
 	</script>
 </body>

@@ -163,7 +163,7 @@ form {
 		width: 100%;
 		padding: .5rem;
 
-		&[type="checkbox"] {
+		&[type="checkbox"], &[type="radio"] {
 			width: auto;
 			padding: 0rem;
 		}
@@ -196,7 +196,7 @@ dialog[open] {
 		opacity: .5;
 	}
 
-	&.search {
+	&.search, &.edit {
 		text-align: left;
 		
 		width: 100%;
