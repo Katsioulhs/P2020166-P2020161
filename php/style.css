@@ -121,20 +121,33 @@ button {
 }
 
 details {
-	/* padding: .75rem; */
+	padding: .75rem;
+	border-radius: .25rem;
 
 	&:has(summary:hover) {
-		/* background-color: red; */
+		background-color: light-dark(hsl(from var(--color-primary) h s calc(l + 35)), hsl(from var(--color-primary) h s calc(l - 35)));
 	}
 
-	&[open] {
-		/* background-color: rgb(131, 131, 131); */
+	&>:nth-child(2) {
+		margin-top: .75rem;
 	}
 
-	&>summary:hover {
-		cursor: pointer;
+	& summary {
+		font-size: large;
+		font-weight: 600;
+
+		&:hover {
+			cursor: pointer;
+		}
 	}
 
+	&:nth-child(odd) {
+		background-color: light-dark(hsl(from white h s calc(l - 2)), hsl(from black h s calc(l + 10)));
+	}
+
+	&:nth-child(even) {
+		background-color: light-dark(hsl(from white h s calc(l - 5)), hsl(from black h s calc(l + 13)));
+	}
 }
 
 form {
@@ -163,7 +176,8 @@ form {
 		width: 100%;
 		padding: .5rem;
 
-		&[type="checkbox"], &[type="radio"] {
+		&[type="checkbox"],
+		&[type="radio"] {
 			width: auto;
 			padding: 0rem;
 		}
@@ -196,9 +210,9 @@ dialog[open] {
 		opacity: .5;
 	}
 
-	&.search, &.edit {
+	&.search,
+	&.edit {
 		text-align: left;
-		
 		width: 100%;
 		max-width: 25rem;
 
