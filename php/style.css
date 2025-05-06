@@ -211,6 +211,7 @@ dialog[open] {
 	}
 
 	&.search,
+	&.add,
 	&.edit {
 		text-align: left;
 		width: 100%;
@@ -269,23 +270,23 @@ select {
 		word-break: break-all;
 		max-width: 40rem;
 	}
+}
 
-	& .video {
-		text-align: left;
-		padding: .75rem;
-		border-radius: .25rem;
+.video {
+	text-align: left;
+	padding: .75rem;
+	border-radius: .25rem;
 
-		&:nth-child(odd) {
-			background-color: light-dark(hsl(from white h s calc(l - 2)), hsl(from black h s calc(l + 10)));
-		}
+	&:nth-child(odd) {
+		background-color: light-dark(hsl(from white h s calc(l - 2)), hsl(from black h s calc(l + 10)));
+	}
 
-		&:nth-child(even) {
-			background-color: light-dark(hsl(from white h s calc(l - 5)), hsl(from black h s calc(l + 13)));
-		}
+	&:nth-child(even) {
+		background-color: light-dark(hsl(from white h s calc(l - 5)), hsl(from black h s calc(l + 13)));
+	}
 
-		&:hover {
-			background-color: light-dark(hsl(from var(--color-primary) h s calc(l + 35)), hsl(from var(--color-primary) h s calc(l - 35)));
-			cursor: pointer;
-		}
+	&:hover {
+		background-color: light-dark(hsl(from var(--color-primary) h s calc(l + 35)), hsl(from var(--color-primary) h s calc(l - 35)));
+		cursor: pointer;
 	}
 }

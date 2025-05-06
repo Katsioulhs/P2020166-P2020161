@@ -1,5 +1,10 @@
 <?php
 
+if (isset($_GET['youtube']) || isset($_GET['code'])) {
+	require_once 'youtube_data.php';
+	exit;
+}
+
 require_once 'vendor/autoload.php';
 use Symfony\Component\Yaml\Yaml;
 
@@ -197,7 +202,6 @@ if (isset($_GET['action'])) {
 			$stmt->execute();
 			echo json_encode(['status' => 'followed']);
 		}
-
 		exit;
 	} else if ($_GET['action'] === 'get_list_content') {
 		$listId = intval($_GET['list_id'] ?? 0);
@@ -336,6 +340,7 @@ if (isset($_GET['action'])) {
 			http_response_code(500);
 			echo json_encode(['error' => 'Αποτυχία δημιουργίας λίστας.']);
 		}
+		exit;
 	} else if ($_GET['action'] === 'export_lists_yaml' && $isLoggedIn) {
 		$listsResult = $db->query("
 			SELECT 
@@ -374,6 +379,55 @@ if (isset($_GET['action'])) {
 		header('Content-Type: text/yaml; charset=utf-8');
 		header('Content-Disposition: attachment; filename="lists_export.yaml"');
 		echo Yaml::dump($exportData, 4, 2);
+		exit;
+	} else if ($_GET['action'] === 'add_video_to_list' && $isLoggedIn) {
+		$listId = intval($_GET['list_id'] ?? 0);
+		$videoId = $_GET['video_id'] ?? '';
+		$title = $_GET['title'] ?? '';
+		$currentUserId = $_SESSION['user_id'];
+
+		if (!$listId || !$videoId || !$title) {
+			http_response_code(400);
+			echo json_encode(['status' => 'error', 'message' => 'Λείπουν απαραίτητα πεδία.']);
+			exit;
+		}
+
+		$stmt = $db->prepare("SELECT user_id FROM lists WHERE id = ?");
+		$stmt->bind_param("i", $listId);
+		$stmt->execute();
+		$result = $stmt->get_result();
+
+		if ($result->num_rows === 0) {
+			http_response_code(404);
+			echo json_encode(['status' => 'error', 'message' => 'Η λίστα δεν βρέθηκε.']);
+			exit;
+		}
+
+		$row = $result->fetch_assoc();
+		if ($row['user_id'] !== $currentUserId) {
+			http_response_code(403);
+			echo json_encode(['status' => 'error', 'message' => 'Δεν έχετε δικαίωμα να προσθέσετε βίντεο σε αυτή τη λίστα.']);
+			exit;
+		}
+
+		$stmt = $db->prepare("SELECT 1 FROM videos WHERE list_id = ? AND youtube_id = ?");
+		$stmt->bind_param("is", $listId, $videoId);
+		$stmt->execute();
+		if ($stmt->get_result()->num_rows > 0) {
+			echo json_encode(['status' => 'error', 'message' => 'Το βίντεο υπάρχει ήδη στη λίστα.']);
+			exit;
+		}
+
+		$stmt = $db->prepare("INSERT INTO videos (list_id, title, youtube_id) VALUES (?, ?, ?)");
+		$stmt->bind_param("iss", $listId, $title, $videoId);
+		$success = $stmt->execute();
+
+		if ($success) {
+			echo json_encode(['status' => 'success']);
+		} else {
+			http_response_code(500);
+			echo json_encode(['status' => 'error', 'message' => 'Αποτυχία προσθήκης βίντεο.']);
+		}
 		exit;
 	}
 
@@ -557,7 +611,7 @@ if (isset($_GET['action'])) {
 										<h3>${fullName}</h3>
 									</div>
 									<hr class="separator">
-									<div id="${dialogIdContent}-content-section" style="overflow-y: auto; max-height: 50dvh;"></div>
+									<div id="${dialogIdContent}-content-section" style="overflow-y: auto; max-height: 50dvh; width: 100%;"></div>
 									<hr class="separator">
 									<form method="dialog"><button class="secondary">Κλείσιμο</button></form>
 								</dialog>
@@ -661,6 +715,7 @@ if (isset($_GET['action'])) {
 					} else {
 						document.getElementById("edit-list-private").checked = true;
 					}
+					document.getElementById("add-list-id").value = list.list_id;
 
 					dialog.showModal();
 				});
@@ -716,6 +771,27 @@ if (isset($_GET['action'])) {
 				<button class="secondary" type="button" id="close-edit-list">Κλείσιμο</button>
 			</div>
 		</form>
+
+		<dialog id="add-video-to-list-dialog" class="add">
+			<form action="dialog" id="search-add-list-form">
+				<input type="hidden" name="add-list-id" id="add-list-id">
+
+				<h1>Πρόσθηκη</h1>
+
+				<hr class="separator">
+
+				<input type="text" name="search-add-list-query" id="search-add-list-query">
+
+				<div id="youtube-results-section" style="overflow-y: auto; height: 50dvh; width: 100%;"></div>
+
+				<hr class="separator">
+
+				<div class="container horizontal">
+					<button type="submit">Αναζήτηση</button>
+					<button class="secondary" type="button" id="close-add-video-to-list">Κλείσιμο</button>
+				</div>
+			</form>
+		</dialog>
 	</dialog>
 	<script>
 		document.getElementById("edit-list-form").addEventListener("submit", (e) => {
@@ -763,6 +839,92 @@ if (isset($_GET['action'])) {
 
 		document.getElementById("close-edit-list").addEventListener("click", () => {
 			document.getElementById("edit-list-dialog").close();
+		});
+
+		// ---
+
+		document.getElementById("search-add-list-form").addEventListener("submit", (e) => {
+			e.preventDefault();
+
+			const query = document.getElementById("search-add-list-query").value.trim();
+
+			if (!query) {
+				alert("Εισάγετε όρο αναζήτησης.");
+				return;
+			}
+
+			const url = new URL("lists.php?youtube", window.location.origin);
+			url.searchParams.set("query", query);
+
+			fetch(url).then(res => res.json()).then(data => {
+				const resultsContainer = document.getElementById("youtube-results-section");
+				resultsContainer.innerHTML = "";
+
+				if (data.status === "success") {
+					if (data.entries.length === 0) {
+						resultsContainer.innerHTML = "<p>Δεν βρέθηκαν αποτελέσματα.</p>";
+						return;
+					}
+
+					data.entries.forEach(video => {
+						const div = document.createElement("div");
+						div.classList.add("video", "container");
+
+						div.innerHTML = `
+							<h3 style="text-align: center">${video.title}</h3>
+							<div class="container horizontal">
+								<button type="button" class="add-video-button" data-video-id="${video.videoId}" data-title="${video.title}">Προσθήκη</button>
+								<button type="button" class="secondary" onclick="openVideoDialog('https://www.youtube.com/embed/${video.videoId}')">Προεπισκόπηση</button>
+							</div>
+						`;
+
+						resultsContainer.appendChild(div);
+					});
+
+					document.querySelectorAll(".add-video-button").forEach(button => {
+						button.addEventListener("click", () => {
+							if (!confirm("Σίγουρα θέλεις να προσθέσεις το βίντεο;")) {
+								return;
+							}
+
+							const url = new URL("lists.php", window.location.origin);
+							url.searchParams.set("action", "add_video_to_list");
+							url.searchParams.set("video_id", button.dataset.videoId);
+							url.searchParams.set("title", button.dataset.title);
+							url.searchParams.set("list_id", document.getElementById("add-list-id").value);
+
+							fetch(url).then(res => res.json()).then(result => {
+								if (result.status === "success") {
+									alert("Το βίντεο προστέθηκε με επιτυχία!");
+									loadLists();
+								} else {
+									alert(result.message || "Αποτυχία προσθήκης βίντεο.");
+								}
+							}).catch(err => {
+								console.error(err);
+								alert("Σφάλμα κατά την αποστολή.");
+							});
+						});
+					});
+				} else if (data.status === "auth") {
+					window.open(data.url, "_blank");
+				} else if (data.status === "login") {
+					window.location.href = "login.php";
+				} else {
+					alert(data.message || "Κάτι πήγε στραβά! Επαναφόρτωσε τη σελίδα.");
+				}
+			}).catch(err => {
+				alert("Σφάλμα σύνδεσης με τον διακομιστή.");
+				console.error(err);
+			});
+		});
+
+		document.getElementById("add-video-btn").addEventListener("click", () => {
+			document.getElementById("add-video-to-list-dialog").showModal();
+		});
+
+		document.getElementById("close-add-video-to-list").addEventListener("click", () => {
+			document.getElementById("add-video-to-list-dialog").close();
 		});
 	</script>
 </body>
