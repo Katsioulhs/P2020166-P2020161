@@ -527,6 +527,7 @@ if (isset($_GET['action'])) {
 							document.getElementById("edit-list-id").value = list.list_id;
 							document.getElementById("edit-list-title").value = list.list_title;
 							document.getElementById("edit-list-public").checked = list.is_public;
+							document.getElementById("add-list-id").value = list.list_id;
 
 							document.getElementById("edit-list-dialog").showModal();
 
