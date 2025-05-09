@@ -1,4 +1,4 @@
 php/vendor
 php/composer.lock
-php/.env
+# php/.env
 mysql-data
